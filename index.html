@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>不再白跑一趟：台大公衛學院周邊 YouBike 撲空風險地圖</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#f7f6f2; --card:#ffffff; --ink:#1d2321; --muted:#5f6764; --line:#e3e1da;
+  --ok:#8fa39a; --full:#d9822b; --empty:#2f6fb0; --both:#b8323a; --accent:#1f6f5c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+header h1{font-size:clamp(22px,3.4vw,32px);margin:0 0 6px;letter-spacing:.02em}
+header p.sub{margin:0;color:var(--muted);font-size:15px}
+.tag{display:inline-block;font-size:12px;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:1px 10px;margin-bottom:10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi .v{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi .l{font-size:13px;color:var(--muted)}
+.kpi.hl .v{color:var(--full)}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 18px 20px;margin-top:18px}
+section h2{font-size:19px;margin:0 0 4px}
+section .lead{color:var(--muted);font-size:14px;margin:0 0 14px}
+#map{height:520px;border-radius:8px;border:1px solid var(--line);background:#eef0ec}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;margin:10px 0 0;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:12px;height:12px;border-radius:50%;display:inline-block;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.filters button{font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;cursor:pointer;color:var(--ink)}
+.filters button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}#map{height:420px}}
+.bars .row{display:grid;grid-template-columns:110px 1fr 56px;align-items:center;gap:10px;margin:10px 0;font-size:14px}
+.bars .track{background:#f0efea;border-radius:4px;height:22px;position:relative;overflow:hidden}
+.bars .fill{height:100%;background:var(--full);border-radius:4px}
+.bars .num{font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
+.pick{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.pick input{font:inherit;font-size:15px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:260px;flex:1}
+.verdict{font-size:15px;margin:6px 0 10px}
+.verdict b{font-weight:700}
+#chart{width:100%;height:260px}
+.alt{font-size:14px;margin:10px 0 0;padding-left:18px}
+.alt li{margin:3px 0}
+.alt a{color:var(--accent);cursor:pointer;text-decoration:underline}
+.note{font-size:13px;color:var(--muted)}
+table.meth{border-collapse:collapse;font-size:14px;width:100%}
+table.meth td{border-top:1px solid var(--line);padding:8px 6px;vertical-align:top}
+table.meth td:first-child{white-space:nowrap;color:var(--muted);width:110px}
+.tip{position:absolute;pointer-events:none;background:#1d2321;color:#fff;font-size:12px;padding:6px 8px;border-radius:6px;opacity:0;transition:opacity .1s;white-space:nowrap}
+.leaflet-tooltip{font-family:inherit;font-size:13px}
+footer{margin-top:26px;font-size:12px;color:var(--muted)}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="tag">健康資訊管理 期中專案 · 雛形</div>
+  <h1>不再白跑一趟：台大公衛學院周邊 YouBike 撲空風險地圖</h1>
+  <p class="sub">騎車到公衛學院（徐州路 17 號），走到站才發現位子全滿；下課要借車，站上卻一台都沒有——哪些站、什麼時段最容易白跑一趟？用臺北市開放資料找答案。</p>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<section>
+  <h2>撲空風險地圖</h2>
+  <p class="lead">公衛學院周邊 1 公里內的 YouBike 站（內圈為 500 公尺），依 2025 年 12 月「見車率」與「見位率」分類。點一下站點可以看它的時段分析。</p>
+  <div class="filters" id="filters"></div>
+  <div id="map"></div>
+  <div class="legend" id="legend"></div>
+</section>
+
+<div class="grid2">
+<section>
+  <h2>整天平均來看，這一帶很「穩」</h2>
+  <p class="lead">「中」等級站的比例：一天中有 10%～40% 的時間沒車可借（見車率）或沒位可還（見位率）。</p>
+  <div class="bars" id="bars"></div>
+  <p class="note">但整天平均會把尖峰時段的問題「攤平」——下面的時段資料才看得到撲空風險集中在哪裡。</p>
+</section>
+<section>
+  <h2>為什麼這是健康議題？</h2>
+  <p class="lead" style="margin-bottom:8px">YouBike 是主動式交通（active transport）：通勤騎車就是日常的身體活動。</p>
+  <p style="font-size:14px;margin:0">撲空一次，就可能讓人改搭公車或叫車。站點供需失衡是推廣身體活動的「環境障礙」。公衛學院旁是台大醫院、捷運站與機關，尖峰車流集中；找出容易撲空的站與時段，使用者可以提早改去備案站，管理者也能看到調度的優先順序。</p>
+</section>
+</div>
+
+<section>
+  <h2>早上車子湧進來，傍晚再被借走</h2>
+  <p class="lead">公衛學院 500 公尺內各站合計，平日每小時「歸還 − 借出」的淨流量。正值代表車子湧入、空位減少；負值代表車子被借走、車越來越少。</p>
+  <div style="position:relative"><svg id="campusChart" style="width:100%;height:240px"></svg><div class="tip" id="tip2"></div></div>
+  <p class="note" id="campusNote"></p>
+</section>
+
+<section id="detail">
+  <h2>查一個站：幾點最容易撲空？</h2>
+  <div class="filters" id="quick"></div>
+  <p class="lead">平日（週一至週五）每小時平均借出與歸還次數。<b style="color:var(--empty)">借出 &gt; 歸還</b>的時段，車會越來越少；<b style="color:var(--full)">歸還 &gt; 借出</b>的時段，位子會越來越滿。</p>
+  <div class="pick">
+    <input id="q" list="names" placeholder="輸入或選擇站名，例如：林森徐州路口">
+    <datalist id="names"></datalist>
+  </div>
+  <div class="verdict" id="verdict"></div>
+  <div style="position:relative"><svg id="chart"></svg><div class="tip" id="tip"></div></div>
+  <ol class="alt" id="alt"></ol>
+</section>
+
+<section>
+  <h2>資料與方法</h2>
+  <table class="meth">
+    <tr><td>研究問題</td><td>台大公衛學院周邊哪些 YouBike 站最容易「沒車可借」或「沒位可還」？在哪些時段？</td></tr>
+    <tr><td>見車率／見位率</td><td>臺北市政府資訊局，<a href="https://data.gov.tw/dataset/166491" target="_blank" rel="noopener">見車率統計</a>、<a href="https://data.gov.tw/dataset/174976" target="_blank" rel="noopener">見位率統計</a>（2025 年 12 月）。定義為每天 06:00–23:59 間，站上至少有 1 台車（或 1 個空位）的時間比例；90% 以上為「高」、60–90% 為「中」、60% 以下為「低」。</td></tr>
+    <tr><td>租借紀錄</td><td>臺北市政府交通局，<a href="https://data.gov.tw/dataset/150635" target="_blank" rel="noopener">公共自行車 2.0 租借紀錄</a>（2025 年 12 月，逐筆）。依借車／還車站與時間（以小時為單位），統計各站平日每小時平均借出、歸還次數。平日共 21 天，已排除 12/25 行憲紀念日放假，以及資料量約只有平日一半的 12/31。</td></tr>
+    <tr><td>範圍</td><td>以台大公衛學院（臺北市中正區徐州路 17 號，地圖上為約略位置）為中心、半徑 1 公里內的 64 站（依 2026 年 11 月站點清單）。其中 3 站在 2025 年 12 月尚無見車率／見位率、4 站沒有對應的租借紀錄（新設或改名），地圖上以空心圓表示。</td></tr>
+    <tr><td>工具</td><td>以生成式 AI（vibe coding）撰寫資料下載、清理與統計程式；地圖使用 Leaflet，圖表使用 D3.js；網頁放置於 GitHub Pages。</td></tr>
+    <tr><td>限制</td><td>見車率／見位率只有一個月、整天平均且只有三級（全市沒有任何一站是「低」）；借還次數反映的是「流量」而非站上剩餘車數，淨流出大的時段代表風險高，但不等於一定沒車；營運商的人工調度沒有公開資料。</td></tr>
+    <tr><td>下一步</td><td>每 10 分鐘自動記錄即時資料，直接算出各站各時段「0 台車」「0 空位」的機率，驗證本頁的推估；並觀察營運商的調度是否能抵銷尖峰車流（例如中山徐州路口）。</td></tr>
+  </table>
+</section>
+
+<footer>資料來源：政府資料開放平臺、臺北市資料大平臺（政府資料開放授權條款第 1 版）。底圖 © OpenStreetMap contributors。</footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+const STATIONS = [{"name":"林森徐州路口","cap":32,"lng":121.52215,"lat":25.04094,"car":"高","pos":"高","dist":36},{"name":"紹興徐州路口","cap":18,"lng":121.52401,"lat":25.04051,"car":"高","pos":"高","dist":162},{"name":"林森濟南路口(東北側)","cap":26,"lng":121.5227,"lat":25.0425,"car":"高","pos":"高","dist":168},{"name":"林森仁愛路口","cap":13,"lng":121.52163,"lat":25.03915,"car":"高","pos":"中","dist":224},{"name":"仁愛林森路口","cap":46,"lng":121.52233,"lat":25.03895,"car":"高","pos":"高","dist":229},{"name":"濟南紹興路口","cap":74,"lng":121.52459,"lat":25.04193,"car":"高","pos":"高","dist":235},{"name":"立法院中興大樓","cap":13,"lng":121.52119,"lat":25.04278,"car":"高","pos":"高","dist":238},{"name":"仁愛紹興路口(北側)","cap":23,"lng":121.52385,"lat":25.03862,"car":"高","pos":"高","dist":298},{"name":"仁愛紹興街口(南側)","cap":20,"lng":121.52345,"lat":25.03837,"car":"高","pos":"高","dist":308},{"name":"徐州杭州路口","cap":30,"lng":121.52565,"lat":25.04023,"car":"高","pos":"高","dist":329},{"name":"中山徐州路口","cap":41,"lng":121.51907,"lat":25.04178,"car":"高","pos":"高","dist":356},{"name":"捷運善導寺站(3號出口)","cap":20,"lng":121.52336,"lat":25.04428,"car":"高","pos":"中","dist":375},{"name":"仁愛杭州路口","cap":25,"lng":121.52497,"lat":25.03846,"car":"高","pos":"高","dist":376},{"name":"捷運善導寺站(3號出口)(忠孝東路側)","cap":31,"lng":121.52357,"lat":25.04467,"car":"高","pos":"高","dist":422},{"name":"青島杭州路口","cap":17,"lng":121.52629,"lat":25.04281,"car":"高","pos":"高","dist":432},{"name":"中正運動中心","cap":40,"lng":121.51985,"lat":25.03786,"car":"高","pos":"高","dist":440},{"name":"濟南路二段8巷口","cap":14,"lng":121.52697,"lat":25.04127,"car":"高","pos":"高","dist":451},{"name":"捷運善導寺站(5號出口)","cap":31,"lng":121.52552,"lat":25.04418,"car":"高","pos":"高","dist":466},{"name":"捷運善導寺站(1號出口)","cap":46,"lng":121.5222,"lat":25.04527,"car":"高","pos":"高","dist":476},{"name":"國家音樂廳","cap":22,"lng":121.51904,"lat":25.03788,"car":"高","pos":"高","dist":492},{"name":"中山青島路口","cap":40,"lng":121.51968,"lat":25.04503,"car":"高","pos":"高","dist":531},{"name":"臺大醫院兒童醫院","cap":22,"lng":121.5188,"lat":25.04461,"car":"高","pos":"高","dist":548},{"name":"信義杭州路口","cap":64,"lng":121.5241,"lat":25.0357,"car":"高","pos":"高","dist":611},{"name":"仁愛金山路口","cap":9,"lng":121.52801,"lat":25.0384,"car":"高","pos":"高","dist":626},{"name":"臺灣文學基地","cap":23,"lng":121.5287,"lat":25.04148,"car":"高","pos":"高","dist":627},{"name":"林森北平路口","cap":20,"lng":121.52377,"lat":25.04659,"car":"高","pos":"高","dist":635},{"name":"北平紹興路口","cap":39,"lng":121.52579,"lat":25.04597,"car":"高","pos":"高","dist":644},{"name":"捷運臺大醫院站(4號出口)","cap":60,"lng":121.51643,"lat":25.04297,"car":"高","pos":"高","dist":650},{"name":"天津北平路口","cap":25,"lng":121.52208,"lat":25.04692,"car":"高","pos":"高","dist":660},{"name":"國家圖書館","cap":50,"lng":121.51709,"lat":25.03763,"car":"高","pos":"高","dist":661},{"name":"捷運臺大醫院站(1號出口)","cap":19,"lng":121.51586,"lat":25.04074,"car":"高","pos":"中","dist":670},{"name":"華山文創園區","cap":39,"lng":121.52849,"lat":25.04367,"car":"高","pos":"高","dist":673},{"name":"金甌女中","cap":15,"lng":121.5245,"lat":25.03519,"car":"高","pos":"高","dist":677},{"name":"杭州南路一段101巷口","cap":14,"lng":121.52799,"lat":25.03746,"car":"高","pos":"高","dist":679},{"name":"仁愛金山路口(東南側)","cap":14,"lng":121.52855,"lat":25.03811,"car":"高","pos":"高","dist":689},{"name":"北平東杭州北路口","cap":20,"lng":121.52736,"lat":25.04553,"car":"高","pos":"高","dist":702},{"name":"臨沂街停車場","cap":33,"lng":121.53006,"lat":25.0426,"car":"高","pos":"高","dist":782},{"name":"臺北市國父史蹟館(逸仙公園)","cap":31,"lng":121.52042,"lat":25.04779,"car":"高","pos":"高","dist":784},{"name":"弘道國中","cap":33,"lng":121.51524,"lat":25.03828,"car":"高","pos":"高","dist":791},{"name":"市民大道二段5巷口","cap":15,"lng":121.52166,"lat":25.04812,"car":"高","pos":"高","dist":796},{"name":"捷運中正紀念堂站(6號出口)","cap":17,"lng":121.5166,"lat":25.03615,"car":"高","pos":"高","dist":803},{"name":"市民林森路口","cap":69,"lng":121.52589,"lat":25.04765,"car":"高","pos":"高","dist":814},{"name":"文光公園","cap":28,"lng":121.53058,"lat":25.03898,"car":"高","pos":"高","dist":844},{"name":"華山公園","cap":19,"lng":121.5277,"lat":25.0471,"car":"高","pos":"高","dist":857},{"name":"捷運中正紀念堂站(5號出口)","cap":29,"lng":121.5168,"lat":25.03526,"car":"高","pos":"中","dist":859},{"name":"臺北轉運站","cap":68,"lng":121.51994,"lat":25.04842,"car":"高","pos":"高","dist":864},{"name":"金山信義路口","cap":25,"lng":121.52721,"lat":25.03443,"car":"高","pos":"高","dist":871},{"name":"捷運臺北車站(M2出口)","cap":20,"lng":121.51903,"lat":25.04821,"car":"高","pos":"高","dist":875},{"name":"金杭公園","cap":20,"lng":121.52436,"lat":25.03325,"car":"高","pos":"高","dist":882},{"name":"信義金山路口(西南側)","cap":12,"lng":121.52682,"lat":25.03407,"car":"","pos":"","dist":885},{"name":"愛國東羅斯福路口","cap":24,"lng":121.51733,"lat":25.03454,"car":"高","pos":"中","dist":887},{"name":"幸安市場","cap":15,"lng":121.53141,"lat":25.04032,"car":"高","pos":"高","dist":901},{"name":"介壽公園","cap":35,"lng":121.5138,"lat":25.03907,"car":"高","pos":"高","dist":902},{"name":"林森長安路口","cap":20,"lng":121.52436,"lat":25.04895,"car":"","pos":"","dist":904},{"name":"長安林森路口公車站","cap":20,"lng":121.52589,"lat":25.04882,"car":"高","pos":"高","dist":934},{"name":"捷運中正紀念堂站(4號出口)","cap":21,"lng":121.51772,"lat":25.03376,"car":"高","pos":"高","dist":938},{"name":"市民大道二段67巷口","cap":30,"lng":121.5296,"lat":25.04652,"car":"高","pos":"高","dist":943},{"name":"仁愛路二段92巷口","cap":18,"lng":121.53143,"lat":25.03807,"car":"高","pos":"高","dist":957},{"name":"捷運東門站(3號出口)","cap":18,"lng":121.52815,"lat":25.03383,"car":"","pos":"","dist":980},{"name":"捷運忠孝新生站(1號出口)","cap":19,"lng":121.53207,"lat":25.04272,"car":"高","pos":"高","dist":983},{"name":"市民金山路口","cap":98,"lng":121.53068,"lat":25.0459,"car":"高","pos":"高","dist":988},{"name":"臺北轉運站(華陰街)","cap":20,"lng":121.51914,"lat":25.04937,"car":"高","pos":"高","dist":990},{"name":"捷運忠孝新生站(2號出口)","cap":32,"lng":121.53222,"lat":25.04235,"car":"高","pos":"高","dist":991},{"name":"捷運中正紀念堂站(7號出口)","cap":23,"lng":121.5156,"lat":25.03465,"car":"高","pos":"高","dist":991}];
+const HOURLY = {"捷運忠孝新生站(1號出口)":{"o":[2.1,1.0,0.2,0.2,0.1,0.1,0.7,15.1,29.3,14.0,10.1,12.1,16.5,18.4,14.0,15.2,18.5,25.6,34.1,20.3,13.1,9.5,5.9,3.5],"i":[1.3,0.5,0.3,0.1,0.1,0.9,2.4,12.9,25.6,13.1,9.7,14.5,19.0,17.0,13.0,15.1,18.0,26.1,34.0,18.0,11.3,8.4,5.4,4.7]},"捷運善導寺站(3號出口)":{"o":[0.8,0.5,0.3,0.3,0.0,0.1,1.5,9.1,20.1,7.8,6.2,5.9,9.6,10.9,7.0,7.5,14.7,13.9,12.7,6.8,5.4,6.0,3.3,1.0],"i":[0.4,0.2,0.1,0.0,0.1,1.2,2.5,12.3,13.5,9.6,6.2,9.6,10.6,8.6,6.4,6.8,8.4,16.0,12.8,6.1,4.4,4.7,2.2,1.1]},"仁愛紹興街口(南側)":{"o":[0.2,0.2,0.1,0.2,0.3,0.3,0.9,9.2,10.3,6.1,6.0,9.8,12.8,9.2,5.4,7.2,12.5,11.3,6.8,3.7,2.4,3.6,1.5,0.9],"i":[0.6,0.3,0.3,0.3,0.2,1.2,1.7,17.8,14.8,7.1,3.8,4.4,12.4,14.8,6.1,5.1,5.8,7.6,7.0,2.9,3.0,3.9,1.6,0.9]},"信義杭州路口":{"o":[1.0,0.8,0.3,0.0,0.1,1.5,6.2,26.2,29.6,19.6,14.1,38.4,42.5,23.2,17.4,20.7,32.5,36.0,22.4,11.4,10.3,10.3,5.4,3.5],"i":[1.1,0.6,1.0,0.2,1.0,2.3,9.3,33.2,56.1,24.4,12.9,16.9,24.2,45.8,15.5,14.6,17.7,27.1,19.5,14.4,8.1,10.0,5.1,5.5]},"金杭公園":{"o":[0.3,0.1,0.3,0.1,0.3,0.6,2.3,8.6,10.0,5.0,6.8,4.2,7.0,7.1,3.6,4.1,5.7,15.6,8.9,6.5,3.9,7.7,3.0,1.1],"i":[1.0,1.4,0.5,0.4,0.2,0.6,1.0,7.9,6.6,6.4,4.6,4.8,7.1,6.6,4.3,5.1,6.1,10.1,12.3,8.0,7.0,7.8,4.4,2.5]},"華山公園":{"o":[0.6,0.5,0.1,0.1,0.1,1.3,2.3,7.0,13.1,7.8,4.1,3.5,5.0,4.4,3.3,4.0,3.8,6.8,8.4,3.6,2.9,2.2,1.9,1.7],"i":[1.2,0.6,0.0,0.1,0.8,0.8,1.9,1.8,6.8,1.8,2.1,1.9,4.3,3.9,4.4,4.3,4.6,8.1,12.5,8.9,5.4,4.8,4.2,1.7]},"徐州杭州路口":{"o":[0.5,0.3,0.0,0.1,0.0,0.5,3.0,9.7,8.0,6.8,5.1,6.8,8.7,6.7,6.7,6.2,9.5,11.6,9.2,5.8,4.0,5.9,2.5,1.1],"i":[0.6,0.3,0.1,0.5,2.5,0.2,1.0,4.3,10.8,9.5,6.2,5.9,8.3,6.7,5.5,5.0,6.3,11.0,9.3,7.5,5.4,6.4,6.8,2.3]},"金甌女中":{"o":[1.1,0.2,0.8,0.3,0.2,1.0,4.0,9.5,12.7,9.8,8.6,9.0,10.9,11.8,9.1,9.6,14.5,18.2,19.7,10.8,10.4,13.5,4.4,0.7],"i":[1.0,1.5,1.0,0.7,0.2,0.2,1.9,11.0,12.1,12.0,7.0,8.4,9.3,17.2,7.6,7.7,12.7,16.5,21.7,15.0,7.3,8.6,4.7,1.8]},"臺北轉運站":{"o":[8.7,5.5,4.8,3.3,3.6,2.5,9.1,13.8,28.5,14.3,8.0,9.4,14.6,15.9,13.5,15.6,15.9,23.0,27.0,16.6,17.8,18.5,16.5,8.3],"i":[1.9,2.3,2.1,2.2,2.6,6.7,9.3,11.5,17.8,10.2,10.6,16.2,18.1,16.2,17.3,17.4,25.8,43.0,35.5,20.0,17.5,13.2,8.8,4.8]},"捷運善導寺站(3號出口)(忠孝東路側)":{"o":[4.0,1.2,0.6,0.6,0.2,2.0,8.7,29.1,34.1,25.2,15.8,18.0,24.3,29.2,20.7,24.5,31.6,47.8,47.9,27.2,20.2,20.8,12.0,5.4],"i":[3.9,0.6,0.7,0.8,1.0,3.4,5.2,28.3,29.2,23.6,15.5,20.3,25.9,25.8,20.7,21.6,26.0,52.9,43.7,27.2,18.1,18.7,10.6,6.0]},"林森濟南路口(東北側)":{"o":[0.7,0.4,0.1,0.1,0.1,1.1,0.6,7.2,15.5,9.7,6.9,10.7,19.3,11.2,8.4,11.6,20.4,15.7,15.1,11.0,11.9,11.1,3.8,1.0],"i":[1.8,1.0,0.4,0.1,0.2,0.2,2.0,17.0,16.6,11.5,6.4,8.9,14.3,17.1,8.7,7.5,12.0,15.4,20.5,13.1,9.0,5.4,4.1,1.6]},"臺大醫院兒童醫院":{"o":[2.2,0.9,0.9,0.5,0.3,1.5,8.4,24.3,27.9,17.5,14.4,17.8,24.2,21.0,20.6,18.1,23.1,43.9,37.2,19.3,15.5,16.1,6.7,2.2],"i":[1.9,1.6,1.3,0.6,0.6,2.0,8.8,28.9,28.1,21.5,14.3,16.5,24.8,22.8,18.3,18.0,26.8,39.6,33.0,16.7,12.6,11.3,6.1,1.8]},"天津北平路口":{"o":[0.6,0.5,0.2,0.1,0.0,0.1,1.9,2.5,8.3,2.8,2.7,3.7,6.0,4.0,2.6,3.1,3.0,6.7,5.2,3.3,2.3,1.4,1.9,1.0],"i":[0.5,0.1,0.0,0.1,0.0,0.9,0.7,2.5,10.2,3.0,2.3,2.3,3.2,5.7,2.2,2.4,3.1,5.3,6.4,2.8,1.4,2.1,1.0,1.4]},"北平紹興路口":{"o":[0.5,0.2,0.2,0.0,0.1,0.0,0.3,2.5,8.5,4.8,3.6,5.8,8.8,6.9,5.1,6.4,7.3,11.5,13.9,6.0,4.9,4.6,4.8,1.4],"i":[0.4,0.4,0.2,0.1,0.0,0.5,0.2,4.2,12.1,7.2,6.3,4.7,7.5,8.4,5.0,5.2,6.7,8.0,11.0,4.9,3.3,4.8,2.8,0.8]},"林森北平路口":{"o":[0.2,0.3,0.1,0.1,0.1,0.5,0.8,1.8,2.5,2.0,2.5,4.3,3.3,3.0,2.7,2.4,3.9,4.4,4.5,2.2,2.2,2.8,2.3,1.2],"i":[0.2,0.2,0.1,0.0,0.1,0.9,0.3,1.8,3.5,4.7,2.4,2.3,2.2,3.0,2.5,2.2,1.9,3.5,3.9,2.0,2.0,2.8,1.0,0.5]},"長安林森路口公車站":{"o":[1.3,1.4,1.2,0.9,1.2,0.7,2.0,12.1,17.0,8.0,5.8,4.2,7.0,7.0,5.4,4.1,5.6,11.9,15.7,7.1,5.7,7.0,4.5,3.3],"i":[2.6,1.2,0.8,0.4,0.3,0.4,1.2,5.0,14.0,5.7,3.3,3.9,6.4,7.5,5.4,6.2,8.9,14.2,20.4,13.2,10.1,11.5,8.4,3.6]},"中山徐州路口":{"o":[3.2,1.0,0.5,0.1,0.1,0.9,2.7,12.9,15.3,17.9,17.7,29.8,31.5,23.8,22.7,25.7,32.0,57.0,40.5,17.3,13.2,12.8,5.5,3.0],"i":[0.7,0.6,0.5,0.3,0.2,1.1,15.7,49.8,55.0,28.2,20.9,22.8,26.1,36.3,22.7,21.8,17.3,20.1,18.0,10.4,8.0,6.2,4.0,1.4]},"文光公園":{"o":[0.6,0.1,0.0,0.0,0.0,1.0,5.5,16.6,6.7,4.1,4.0,4.5,5.0,5.0,4.0,5.9,5.9,9.1,10.1,5.8,3.0,2.2,2.5,0.7],"i":[1.1,0.5,0.2,0.2,0.0,0.1,1.2,3.7,6.7,3.7,3.7,3.8,5.4,5.4,5.7,5.5,9.0,12.7,10.9,7.9,8.9,7.6,3.1,1.5]},"市民林森路口":{"o":[2.2,1.5,1.8,2.0,1.8,1.7,5.3,14.5,22.3,16.3,9.0,8.9,10.0,11.3,8.7,9.4,9.5,18.5,17.8,10.0,9.0,10.4,7.3,5.9],"i":[2.5,1.6,1.3,0.7,1.1,1.0,3.4,9.5,15.3,15.0,6.5,7.4,9.3,12.0,8.3,9.6,12.6,19.6,22.9,15.0,12.0,11.7,10.7,4.0]},"中山青島路口":{"o":[1.4,0.9,0.5,0.3,0.4,1.5,2.2,7.0,8.1,8.0,7.2,11.5,17.1,14.0,13.4,10.3,15.9,26.2,22.9,13.0,10.0,7.8,6.2,1.6],"i":[0.9,0.6,0.4,1.2,1.4,2.7,2.8,16.0,25.5,10.5,9.4,11.2,13.8,17.1,12.4,10.9,15.7,22.7,17.1,9.2,5.6,4.0,1.9,1.0]},"華山文創園區":{"o":[0.3,0.4,0.3,0.0,0.3,0.4,2.0,3.0,5.1,5.8,5.9,9.1,13.0,15.0,13.8,15.0,17.6,21.5,18.0,10.3,7.5,7.1,2.5,1.2],"i":[0.6,0.5,0.3,0.1,0.1,0.1,1.8,2.6,10.9,8.3,8.9,10.9,15.3,14.5,14.0,14.0,14.2,13.9,16.4,9.7,5.3,4.5,1.9,0.8]},"臺北轉運站(華陰街)":{"o":[4.0,2.5,1.7,1.0,1.4,2.9,5.8,18.7,19.4,18.5,11.6,13.0,15.7,17.0,20.1,17.8,17.0,27.4,33.7,22.1,16.2,19.0,12.1,6.8],"i":[2.7,2.3,1.6,1.2,2.1,6.1,10.1,15.9,18.7,17.0,15.6,15.2,16.0,14.8,17.2,18.4,18.5,28.1,32.6,20.7,15.9,14.7,9.9,7.0]},"捷運善導寺站(5號出口)":{"o":[1.0,0.8,0.2,0.1,0.1,0.8,5.8,14.2,21.3,14.8,11.3,15.1,21.1,17.6,14.2,17.4,20.3,24.9,26.5,16.7,11.7,10.4,3.8,2.2],"i":[0.9,1.0,0.6,0.2,0.2,3.5,6.1,12.8,16.7,17.6,15.5,14.1,20.5,20.9,13.3,15.0,16.4,25.8,25.2,16.3,9.5,6.9,4.4,2.5]},"捷運臺北車站(M2出口)":{"o":[2.5,1.3,1.0,0.8,0.5,2.7,14.0,28.5,21.1,12.6,9.8,12.5,13.8,13.1,12.6,14.7,22.4,32.6,34.1,20.5,17.8,14.8,13.8,6.0],"i":[1.3,1.3,1.2,0.8,2.1,10.6,13.3,20.9,17.3,12.7,11.3,13.2,14.4,12.2,13.0,19.3,25.0,33.6,31.2,22.3,17.1,17.0,12.0,5.3]},"市民金山路口":{"o":[0.2,0.3,0.4,0.0,0.0,0.3,1.4,3.9,7.0,6.8,4.3,6.6,7.8,12.0,10.9,11.8,12.3,15.6,18.2,14.3,11.9,14.2,7.1,2.8],"i":[1.0,0.5,0.5,0.1,0.1,0.2,0.9,2.7,4.6,6.7,7.7,9.9,13.9,13.3,12.0,14.4,15.0,15.7,19.4,15.1,9.7,6.6,3.6,1.6]},"捷運中正紀念堂站(6號出口)":{"o":[0.3,0.2,0.0,0.1,0.0,0.0,0.3,4.3,3.4,1.5,1.0,1.0,3.3,2.3,2.3,1.9,4.8,5.8,4.4,2.2,2.6,2.6,0.9,0.3],"i":[0.0,0.1,0.0,0.1,0.0,0.0,0.3,5.0,1.7,1.5,1.6,1.1,3.3,2.9,2.0,3.6,4.2,4.4,2.6,1.6,1.5,0.7,0.8,0.3]},"紹興徐州路口":{"o":[0.5,0.3,0.2,0.2,0.1,0.7,2.2,7.6,8.8,9.1,8.4,5.8,4.7,7.5,6.5,6.9,8.0,13.0,9.1,6.5,4.5,5.3,2.8,1.2],"i":[1.2,0.7,0.2,0.2,0.1,0.1,1.1,3.0,10.3,9.6,8.0,5.3,7.0,6.7,6.7,6.7,6.7,10.9,10.5,6.5,6.8,6.6,5.4,2.0]},"弘道國中":{"o":[0.2,0.4,0.0,0.0,0.0,0.3,1.1,2.7,5.6,7.1,3.8,6.0,15.0,7.4,5.4,5.8,27.2,14.0,5.6,4.9,4.7,3.2,1.5,1.0],"i":[0.4,0.2,0.0,0.0,0.1,0.2,3.6,24.3,11.6,7.0,4.9,4.7,8.4,9.1,5.6,5.1,6.6,6.8,4.4,3.9,2.9,2.6,1.4,0.9]},"杭州南路一段101巷口":{"o":[0.3,0.1,0.0,0.0,0.0,1.1,3.9,4.8,7.6,5.8,4.9,5.1,5.7,5.4,3.7,3.9,5.0,8.5,9.3,4.2,4.0,5.0,1.3,0.4],"i":[0.4,0.2,0.3,0.3,0.0,0.1,0.3,1.4,2.1,2.6,1.8,3.7,5.2,3.8,3.3,4.2,6.9,8.3,9.7,5.5,4.7,5.7,3.0,0.9]},"捷運忠孝新生站(2號出口)":{"o":[2.1,0.9,0.5,0.3,0.2,1.2,4.9,17.0,28.8,14.7,10.8,14.8,18.8,19.0,15.6,18.3,19.5,26.7,33.6,20.2,10.5,10.6,6.8,3.0],"i":[1.8,0.7,0.5,0.2,0.4,2.1,2.8,15.1,22.8,12.6,12.2,14.5,20.1,22.0,13.8,18.4,20.5,30.0,34.6,17.7,8.9,9.6,6.8,3.2]},"中正運動中心":{"o":[0.2,0.1,0.0,0.0,0.0,0.0,2.5,19.8,15.4,27.7,27.7,20.8,30.3,37.5,15.4,30.6,37.9,34.0,37.5,31.8,23.0,6.0,0.4,0.1],"i":[0.1,0.0,0.0,0.0,0.0,4.0,17.9,25.3,23.1,19.2,19.6,25.4,30.1,26.9,29.7,28.3,23.3,31.7,35.0,30.0,18.0,4.1,0.4,0.2]},"捷運善導寺站(1號出口)":{"o":[0.9,0.5,0.1,0.0,0.1,0.1,0.8,8.2,15.7,8.2,7.4,9.0,13.3,9.9,7.4,8.0,11.7,14.0,13.4,6.3,5.1,3.4,3.0,1.0],"i":[0.4,0.5,0.2,0.2,0.1,0.9,6.4,10.3,25.6,7.3,5.1,7.9,9.1,11.7,6.0,6.5,5.2,12.2,10.2,5.9,4.1,2.6,2.0,1.0]},"捷運臺大醫院站(4號出口)":{"o":[4.5,2.8,3.4,0.7,1.1,2.0,4.7,15.4,26.9,18.5,18.8,27.2,34.1,32.5,27.7,29.7,37.5,44.7,48.3,26.5,21.7,20.8,9.3,5.7],"i":[3.0,2.4,3.4,0.8,1.2,3.7,6.0,15.0,35.3,25.3,24.0,28.8,37.7,33.1,29.6,29.6,41.7,48.4,36.5,23.0,13.9,9.8,7.0,6.3]},"捷運臺大醫院站(1號出口)":{"o":[2.1,1.3,1.0,0.8,0.6,0.5,4.5,11.6,22.7,16.1,13.4,14.4,17.1,14.4,14.2,17.3,17.4,26.0,17.3,8.3,7.6,7.4,4.4,3.8],"i":[1.3,0.7,1.0,0.6,0.4,1.2,5.3,10.2,24.4,16.6,14.7,12.1,16.7,18.4,14.9,14.7,21.0,21.4,14.0,7.0,7.0,6.1,3.9,2.9]},"金山信義路口":{"o":[3.0,0.4,1.0,0.5,0.5,1.6,12.1,19.0,24.8,20.0,21.1,25.9,30.4,23.4,18.0,16.0,21.6,36.9,37.2,22.8,16.4,16.9,13.0,5.2],"i":[3.0,1.5,1.2,1.4,0.6,0.6,3.3,18.8,22.4,21.4,24.7,28.3,28.4,23.7,16.6,21.5,30.8,34.5,33.8,24.0,19.3,16.4,12.8,7.6]},"臺北市國父史蹟館(逸仙公園)":{"o":[0.8,0.7,0.3,0.6,0.6,0.7,1.2,4.2,7.9,3.5,1.9,3.3,2.7,3.6,3.7,2.5,2.9,4.3,5.7,3.5,2.8,3.7,3.3,2.0],"i":[0.3,0.6,0.6,0.2,0.5,2.5,2.5,1.3,3.8,1.9,2.1,2.7,2.9,3.2,2.9,2.9,6.0,8.2,6.4,4.0,2.7,1.8,1.3,1.0]},"市民大道二段5巷口":{"o":[1.3,1.1,1.2,0.4,0.2,0.5,2.6,7.9,9.5,7.1,5.4,8.0,7.6,8.7,6.3,6.0,7.1,9.7,11.4,5.3,4.7,3.0,2.0,2.0],"i":[0.5,1.1,0.6,0.4,0.2,1.0,1.3,5.4,13.8,7.0,5.4,5.6,7.4,8.6,5.0,6.6,7.3,9.3,13.0,6.9,4.9,4.2,2.8,1.7]},"捷運中正紀念堂站(5號出口)":{"o":[1.0,0.6,0.4,0.1,0.0,0.4,5.0,9.9,9.2,5.2,5.2,7.6,9.4,11.3,9.4,10.8,14.7,20.6,18.2,14.4,9.5,7.1,3.1,1.4],"i":[0.4,0.1,0.2,0.0,0.8,0.6,3.6,8.4,7.1,5.3,7.0,8.3,12.0,11.0,9.3,10.7,14.3,16.8,16.7,15.1,8.0,5.6,3.5,1.0]},"捷運中正紀念堂站(7號出口)":{"o":[0.6,0.5,0.1,0.0,0.0,0.0,0.3,3.6,4.1,5.0,3.4,5.2,7.0,6.0,3.4,3.9,5.7,6.0,4.7,2.5,2.2,2.6,1.7,1.5],"i":[0.0,0.0,0.0,0.1,0.0,0.1,1.0,2.6,7.3,3.1,2.4,3.0,4.0,6.6,2.6,2.5,4.0,3.7,2.6,1.3,1.0,1.2,0.9,0.8]},"青島杭州路口":{"o":[1.2,0.2,0.0,0.0,0.1,0.1,2.0,4.8,8.9,8.3,5.5,11.6,12.4,9.5,7.9,9.9,9.2,12.6,12.7,6.2,5.8,5.3,3.7,1.0],"i":[0.5,0.3,0.1,0.1,0.1,0.5,2.4,6.9,12.3,11.3,6.2,7.6,12.7,14.2,7.0,7.8,7.4,9.3,12.5,6.2,5.6,5.0,4.2,0.8]},"捷運中正紀念堂站(4號出口)":{"o":[2.0,1.1,0.6,0.6,0.2,0.3,2.1,10.9,14.7,12.1,8.3,10.7,15.1,11.1,10.7,9.8,10.8,14.9,12.5,8.5,6.9,7.2,2.9,2.6],"i":[1.1,0.3,0.3,0.5,0.2,0.1,3.0,10.5,21.3,7.7,7.2,9.2,15.2,17.2,8.8,8.0,10.6,11.8,10.4,7.8,7.0,5.3,3.1,4.2]},"林森徐州路口":{"o":[6.8,2.3,1.0,0.7,0.4,1.1,3.1,11.1,22.0,14.8,14.5,20.0,31.3,17.2,12.3,15.6,27.3,31.2,22.3,14.7,10.6,15.0,10.5,7.0],"i":[4.5,2.7,1.7,1.1,0.3,0.3,2.9,20.5,31.5,25.6,17.2,14.6,25.5,24.2,13.1,14.8,13.9,20.2,21.6,16.0,11.3,15.8,12.9,7.8]},"國家圖書館":{"o":[0.4,0.0,0.2,0.2,0.0,0.1,0.5,1.6,3.0,5.2,7.0,12.0,24.2,13.0,7.4,9.3,17.2,27.3,14.3,8.2,4.8,3.3,0.6,0.2],"i":[0.0,0.0,0.0,0.2,0.0,0.0,1.7,8.0,17.4,14.4,7.9,11.0,16.4,21.9,11.0,10.0,11.9,12.0,11.2,7.4,2.8,1.0,0.1,0.1]},"臨沂街停車場":{"o":[0.2,0.3,0.0,0.0,0.0,0.2,0.5,5.1,6.8,4.5,2.3,3.7,4.0,4.4,3.9,2.3,3.6,8.2,7.0,3.7,2.6,4.4,0.7,0.3],"i":[0.1,0.6,0.2,0.1,0.1,0.2,2.1,2.3,5.0,4.6,1.6,3.2,3.9,3.6,3.2,3.9,5.2,4.8,5.9,4.0,3.5,1.7,1.3,0.9]},"仁愛金山路口":{"o":[0.2,0.3,0.0,0.0,0.0,0.2,3.3,6.4,10.2,7.0,5.5,4.0,5.7,5.6,3.5,5.4,5.3,8.3,10.3,6.4,3.6,2.1,1.6,0.8],"i":[0.7,0.7,0.4,0.1,0.1,0.1,1.9,3.3,6.1,6.0,3.3,3.5,5.9,4.5,3.0,4.3,6.7,8.1,8.5,7.7,5.8,3.1,2.2,0.9]},"北平東杭州北路口":{"o":[0.3,0.3,0.4,0.1,0.1,0.0,0.5,1.6,4.4,3.1,2.7,5.3,6.9,5.1,5.6,6.2,7.4,8.4,5.5,4.2,1.8,3.3,1.3,0.5],"i":[0.2,0.0,0.1,0.0,0.1,0.0,2.2,6.7,8.0,3.3,2.6,3.5,6.4,6.4,5.2,5.4,4.2,4.1,6.1,3.7,2.2,1.9,0.7,0.5]},"仁愛金山路口(東南側)":{"o":[0.3,0.3,0.0,0.1,0.1,0.9,5.6,9.0,13.0,9.5,7.3,8.0,12.0,9.8,5.4,6.4,8.2,13.6,14.7,10.8,7.1,5.4,2.5,1.5],"i":[1.6,1.0,0.3,0.1,0.1,0.1,2.5,5.8,12.9,9.0,8.0,8.1,12.2,8.3,5.8,7.0,9.4,13.0,16.3,11.8,8.2,7.4,3.0,2.6]},"仁愛杭州路口":{"o":[0.1,0.0,0.1,0.1,0.1,1.5,4.5,10.5,20.1,10.6,12.7,12.4,14.0,13.2,8.5,9.8,10.4,23.1,19.0,8.5,7.0,6.7,4.6,1.3],"i":[1.0,0.2,0.2,0.2,0.2,0.2,1.3,9.1,35.1,13.9,6.3,9.3,11.9,16.0,10.1,8.2,10.9,16.6,15.7,8.9,10.0,10.4,8.0,2.8]},"林森仁愛路口":{"o":[0.8,0.4,0.3,0.0,0.1,0.1,1.1,16.7,9.9,7.2,7.3,10.7,12.2,9.9,8.0,10.6,13.2,18.6,11.9,7.1,3.8,3.2,2.0,0.9],"i":[1.0,0.3,0.1,0.5,0.2,0.8,4.1,16.9,16.0,10.1,10.0,10.4,12.9,10.4,7.2,9.5,8.8,11.0,9.9,6.5,3.4,2.8,2.5,1.2]},"市民大道二段67巷口":{"o":[0.1,0.3,0.2,0.1,0.4,0.5,0.6,4.0,5.7,5.4,2.9,1.2,2.4,2.3,2.6,1.1,1.5,2.6,4.3,1.8,1.3,1.9,0.9,0.4],"i":[0.6,0.3,0.0,0.1,0.0,0.5,0.0,0.1,0.5,1.4,0.9,0.7,1.9,1.6,1.7,2.2,2.7,4.9,4.7,2.7,2.3,2.3,2.1,1.2]},"愛國東羅斯福路口":{"o":[0.9,0.7,0.3,0.3,0.0,0.1,0.2,1.3,4.9,3.7,2.0,5.6,6.6,4.8,2.8,3.5,4.6,10.5,4.4,3.1,2.6,1.6,1.3,1.3],"i":[0.3,0.2,0.1,0.0,0.0,0.0,0.2,1.4,6.6,3.3,1.9,3.3,4.2,9.0,4.2,2.8,4.0,3.3,3.4,2.9,2.0,1.2,0.9,0.5]},"濟南紹興路口":{"o":[0.2,0.2,0.3,0.1,0.0,0.1,1.5,7.0,8.6,7.4,6.0,7.0,11.9,7.5,6.3,7.0,15.3,10.1,8.1,4.8,4.6,7.4,3.5,1.1],"i":[1.3,0.9,0.5,0.2,0.3,0.4,0.6,7.8,16.3,8.5,6.4,4.7,8.4,9.5,5.1,7.0,6.3,7.2,9.2,5.9,4.4,5.1,4.1,1.7]},"仁愛林森路口":{"o":[0.5,0.4,0.1,0.2,0.0,0.0,1.0,10.5,6.6,5.3,6.0,7.7,12.2,8.2,6.7,7.9,15.2,26.2,13.7,8.2,4.1,5.2,2.2,0.9],"i":[0.7,0.1,0.3,0.0,0.0,0.1,3.0,11.0,18.2,12.1,6.7,6.7,9.0,12.0,8.7,6.6,7.4,12.2,9.9,6.0,3.4,3.7,2.6,1.4]},"幸安市場":{"o":[1.0,0.3,0.1,0.2,0.1,0.6,3.3,8.8,8.2,6.7,5.0,8.5,12.0,14.4,9.4,11.8,14.2,16.3,16.8,10.9,9.2,8.3,6.2,2.6],"i":[1.3,0.6,0.4,0.3,0.2,0.3,1.3,4.1,7.3,5.4,6.5,9.9,15.3,11.0,10.0,13.4,14.6,16.0,18.1,11.3,9.3,11.0,6.2,3.9]},"立法院中興大樓":{"o":[0.2,0.1,0.0,0.0,0.0,0.1,0.7,2.3,1.6,4.0,4.4,7.8,9.4,6.8,6.0,8.6,10.0,5.5,3.7,3.0,2.2,2.0,0.7,0.3],"i":[0.3,0.0,0.0,0.0,0.0,0.0,2.7,7.1,3.6,6.1,4.2,6.1,6.7,10.8,6.9,6.0,6.6,4.0,5.4,3.1,1.1,1.3,0.8,0.5]},"臺灣文學基地":{"o":[0.2,0.3,0.0,0.0,0.2,0.9,1.0,5.0,4.0,4.1,2.8,2.9,3.5,5.0,1.8,2.0,2.9,5.8,5.8,4.2,2.0,1.0,1.4,1.0],"i":[0.2,0.4,0.2,0.0,0.0,0.9,0.2,0.4,2.5,3.5,2.7,2.8,3.4,2.4,2.8,2.9,5.2,6.0,4.7,4.1,3.9,3.3,3.2,1.4]},"國家音樂廳":{"o":[0.2,0.3,0.2,0.0,0.0,0.3,0.8,3.4,5.2,2.5,3.2,4.7,5.4,5.8,3.9,4.5,5.9,8.4,6.7,6.2,6.0,5.8,1.0,0.2],"i":[0.1,0.1,0.0,0.0,0.0,0.6,1.7,6.2,7.2,4.7,3.8,4.8,7.0,5.5,3.1,4.4,5.1,5.0,9.3,9.7,1.1,1.2,0.6,0.7]},"濟南路二段8巷口":{"o":[0.8,0.2,0.1,0.0,0.2,1.2,4.7,6.2,9.1,8.8,8.0,7.8,10.9,9.4,8.2,7.8,10.3,18.4,16.5,9.9,7.0,6.0,3.8,1.4],"i":[1.4,0.9,0.2,0.5,1.3,0.3,1.0,3.5,9.3,10.6,9.5,7.8,11.0,9.5,7.6,7.0,13.9,14.4,15.9,10.4,6.9,9.6,4.7,1.9]},"仁愛紹興路口(北側)":{"o":[0.8,0.1,0.0,0.0,0.1,0.2,0.9,4.0,4.5,5.0,4.0,3.4,5.2,3.9,2.2,3.8,4.0,12.0,7.3,1.9,1.1,2.3,1.5,0.9],"i":[0.5,0.4,0.2,0.0,0.1,0.0,0.3,1.5,13.3,8.9,2.0,2.9,4.0,3.4,2.1,3.9,6.2,4.8,4.6,2.0,1.3,3.0,1.6,1.6]},"介壽公園":{"o":[0.5,0.3,0.4,0.3,0.2,0.2,1.0,0.8,1.2,0.9,1.4,2.9,5.9,4.0,3.2,4.2,15.1,15.4,5.8,2.7,2.4,2.9,1.1,1.7],"i":[0.3,0.2,0.2,0.3,0.0,0.7,1.2,14.0,11.7,3.8,3.8,2.2,4.0,2.9,2.4,2.1,3.8,4.0,3.8,2.1,2.0,1.6,1.8,0.3]}};
+const META = {"cityN": 1696, "cityPosMid": 134, "cityCarMid": 19, "weekdays": 21, "defaultStation": "林森徐州路口"};
+
+const COLORS = {ok:'#8fa39a', full:'#d9822b', empty:'#2f6fb0', both:'#b8323a', na:'#ffffff'};
+const LABEL = {ok:'兩者皆穩（高／高）', full:'常沒位可還（中見位率）', empty:'常沒車可借（中見車率）', both:'兩者都常出問題', na:'2025/12 尚無分級資料'};
+const SITE = {name:'台大公衛學院', lat:25.0410, lng:121.5225};
+STATIONS.forEach(s=>{
+  s.near = s.dist<=500;
+  s.type = !s.car ? 'na' : (s.car==='中' && s.pos==='中') ? 'both' : s.car==='中' ? 'empty' : s.pos==='中' ? 'full' : 'ok';
+});
+const byName = Object.fromEntries(STATIONS.map(s=>[s.name,s]));
+const rated = STATIONS.filter(s=>s.car);
+
+// KPIs
+(function(){
+  const n=STATIONS.length, pct=(a,b)=>Math.round(100*a/b);
+  const full=rated.filter(s=>s.pos==='中').length, empty=rated.filter(s=>s.car==='中').length;
+  const nearest=STATIONS.slice().sort((a,b)=>a.dist-b.dist)[0];
+  const k=[
+    [n,'公衛學院 1 公里內的站'],
+    [full+' 站','常沒位可還（'+pct(full,rated.length)+'%）'],
+    [empty+' 站','常沒車可借（'+pct(empty,rated.length)+'%）'],
+    [nearest.dist+' 公尺','最近的站：'+nearest.name,'hl'],
+  ];
+  const box=document.getElementById('kpis');
+  k.forEach(([v,l,c])=>{const d=document.createElement('div');d.className='kpi '+(c||'');
+    const a=document.createElement('div');a.className='v';a.textContent=v;
+    const b=document.createElement('div');b.className='l';b.textContent=l;d.append(a,b);box.append(d);});
+})();
+
+// Bars
+(function(){
+  const rows=[
+    ['周邊 1 公里：中見位率', rated.filter(s=>s.pos==='中').length/rated.length, rated.length+' 站'],
+    ['全臺北市：中見位率', META.cityPosMid/META.cityN, META.cityN.toLocaleString()+' 站'],
+    ['周邊 1 公里：中見車率', rated.filter(s=>s.car==='中').length/rated.length, rated.length+' 站'],
+    ['全臺北市：中見車率', META.cityCarMid/META.cityN, META.cityN.toLocaleString()+' 站'],
+  ];
+  const box=document.getElementById('bars');
+  rows.forEach(([l,v,n],i)=>{
+    const r=document.createElement('div');r.className='row';r.style.gridTemplateColumns='150px 1fr 52px';
+    const a=document.createElement('div');a.textContent=l;
+    const sm=document.createElement('div');sm.className='note';sm.textContent=n;a.append(sm);
+    const t=document.createElement('div');t.className='track';const f=document.createElement('div');f.className='fill';f.style.width=Math.max(v*100,0.4)+'%';f.style.background=i<2?COLORS.full:COLORS.empty;t.append(f);
+    const nm=document.createElement('div');nm.className='num';nm.textContent=(v*100).toFixed(1)+'%';
+    r.append(a,t,nm);box.append(r);
+  });
+})();
+
+// Map
+let map, layer, markers={}, activeFilter='all';
+(function(){
+  map=L.map('map',{scrollWheelZoom:false}).setView([SITE.lat,SITE.lng],15);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors © CARTO'}).addTo(map);
+  L.circle([SITE.lat,SITE.lng],{radius:1000,color:'#1f6f5c',weight:1,dashArray:'4 4',fill:false,interactive:false}).addTo(map);
+  L.circle([SITE.lat,SITE.lng],{radius:500,color:'#1f6f5c',weight:1.2,fillColor:'#1f6f5c',fillOpacity:0.04,interactive:false}).addTo(map);
+  L.marker([SITE.lat,SITE.lng],{icon:L.divIcon({className:'',html:'<div style="font-size:13px;font-weight:800;color:#fff;background:#1f6f5c;padding:2px 8px;border-radius:5px;white-space:nowrap;width:max-content;transform:translate(-50%,-160%);box-shadow:0 1px 3px rgba(0,0,0,.3)">★ 台大公衛學院</div>'})}).addTo(map);
+  [['捷運台大醫院站',25.0413,121.5163],['捷運善導寺站',25.0447,121.5232],['中正紀念堂',25.0353,121.5219]].forEach(([n,la,lo])=>{
+    L.marker([la,lo],{icon:L.divIcon({className:'',html:'<div style="font-size:12px;font-weight:700;color:#1d2321;background:rgba(255,255,255,.88);padding:1px 6px;border-radius:4px;border:1px solid #ccc;white-space:nowrap;width:max-content;transform:translate(-50%,-150%)">'+n+'</div>'})}).addTo(map);
+  });
+  layer=L.layerGroup().addTo(map);
+  draw();
+  const lg=document.getElementById('legend');
+  ['ok','full','empty','na'].forEach(k=>{const s=document.createElement('span');const d=document.createElement('i');d.className='dot';d.style.background=COLORS[k];if(k==='na'){d.style.border='2px solid #8fa39a';}s.append(d,document.createTextNode(LABEL[k]));lg.append(s);});
+  const sz=document.createElement('span');sz.textContent='圓圈大小＝停車柱數';lg.append(sz);
+  const fs=[['all','全部'],['full','常沒位'],['near','500 公尺內']];
+  const fb=document.getElementById('filters');
+  fs.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;if(k==='all')b.className='on';
+    b.onclick=()=>{activeFilter=k;fb.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));draw();};fb.append(b);});
+})();
+function visible(s){
+  if(activeFilter==='full') return s.pos==='中';
+  if(activeFilter==='near') return s.near;
+  return true;
+}
+function draw(){
+  layer.clearLayers(); markers={};
+  const order=['na','ok','full','empty','both'];
+  STATIONS.filter(visible).sort((a,b)=>order.indexOf(a.type)-order.indexOf(b.type)).forEach(s=>{
+    const na=s.type==='na';
+    const m=L.circleMarker([s.lat,s.lng],{radius:4+Math.sqrt(s.cap)*0.9,color:na?'#8fa39a':'#fff',weight:na?2:1.5,fillColor:COLORS[s.type],fillOpacity:na?0.9:(s.type==='ok'?0.6:0.92)});
+    m.bindTooltip(`<b>${esc(s.name)}</b><br>${s.cap} 柱｜距公衛學院 ${s.dist} 公尺<br>`+(na?'2025/12 尚無分級資料':`見車率：${s.car}｜見位率：${s.pos}`));
+    m.on('click',()=>select(s.name,false));
+    m.addTo(layer); markers[s.name]=m;
+  });
+}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// Detail
+const dl=document.getElementById('names');
+STATIONS.slice().sort((a,b)=>a.dist-b.dist).forEach(s=>{const o=document.createElement('option');o.value=s.name;dl.append(o);});
+const q=document.getElementById('q');
+q.addEventListener('change',()=>{if(byName[q.value])select(q.value,true);});
+q.addEventListener('input',()=>{if(byName[q.value])select(q.value,true);});
+
+function haversine(a,b){const R=6371000,r=x=>x*Math.PI/180;const d=Math.sin(r(b.lat-a.lat)/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(r(b.lng-a.lng)/2)**2;return 2*R*Math.asin(Math.sqrt(d));}
+
+function select(name,pan){
+  const s=byName[name]; if(!s) return;
+  q.value=name;
+  if(pan){ map.setView([s.lat,s.lng],16); }
+  if(pan && markers[name]) markers[name].openTooltip();
+  const h=HOURLY[name];
+  const v=document.getElementById('verdict'); v.innerHTML='';
+  const head=document.createElement('div');
+  const b=document.createElement('b');b.textContent=name;head.append(b);
+  head.append(document.createTextNode(`（${s.cap} 柱，距公衛學院 ${s.dist} 公尺）：${LABEL[s.type]}。`));
+  v.append(head);
+  if(h){
+    const net=h.o.map((o,i)=>o-h.i[i]);
+    const hrs=d3.range(6,24);
+    const outH=hrs.slice().sort((a,b)=>net[b]-net[a])[0], inH=hrs.slice().sort((a,b)=>net[a]-net[b])[0];
+    const p=document.createElement('div');p.className='note';p.style.fontSize='14px';
+    const parts=[];
+    if(net[outH]>0.5) parts.push(`${outH}:00–${outH+1}:00 平均淨流出 ${net[outH].toFixed(1)} 台（車最容易被借光）`);
+    if(net[inH]<-0.5) parts.push(`${inH}:00–${inH+1}:00 平均淨流入 ${(-net[inH]).toFixed(1)} 台（位子最容易被塞滿）`);
+    p.textContent = parts.length? '平日風險時段：'+parts.join('；')+'。' : '平日各時段借還大致平衡。';
+    v.append(p);
+  }
+  drawChart(h);
+  // alternatives
+  const alt=document.getElementById('alt'); alt.innerHTML='';
+  const near=STATIONS.filter(x=>x!==s && x.type==='ok').map(x=>({x,d:haversine(s,x)})).sort((a,b)=>a.d-b.d).slice(0,3);
+  if(s.type!=='ok'){
+    const t=document.createElement('div');t.className='note';t.style.marginLeft='-18px';t.textContent='附近較穩的備案站（見車率、見位率皆為「高」）：';alt.append(t);
+    near.forEach(({x,d})=>{const li=document.createElement('li');const a=document.createElement('a');a.textContent=x.name;a.onclick=()=>select(x.name,true);li.append(a,document.createTextNode(`　步行約 ${Math.round(d)} 公尺（${Math.max(1,Math.round(d/80))} 分鐘）`));alt.append(li);});
+  }
+}
+
+function drawChart(h){
+  const svg=d3.select('#chart'); svg.selectAll('*').remove();
+  const W=document.getElementById('chart').clientWidth, H=260, m={t:14,r:12,b:30,l:36};
+  if(!h){svg.append('text').attr('x',W/2).attr('y',H/2).attr('text-anchor','middle').attr('fill','#5f6764').text('這個站在 2025 年 12 月沒有租借紀錄（可能是新設或改名的站）');return;}
+  const x=d3.scaleBand().domain(d3.range(24)).range([m.l,W-m.r]).padding(0.18);
+  const ymax=d3.max([...h.o,...h.i])||1;
+  const y=d3.scaleLinear().domain([0,ymax]).nice().range([H-m.b,m.t]);
+  svg.append('g').attr('transform',`translate(0,${H-m.b})`).call(d3.axisBottom(x).tickValues(d3.range(0,24,3)).tickFormat(d=>d+'時').tickSizeOuter(0)).call(g=>g.selectAll('text').attr('fill','#5f6764')).call(g=>g.select('.domain').attr('stroke','#ccc'));
+  svg.append('g').attr('transform',`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(W-m.l-m.r))).call(g=>g.select('.domain').remove()).call(g=>g.selectAll('line').attr('stroke','#eee')).call(g=>g.selectAll('text').attr('fill','#5f6764'));
+  const bw=x.bandwidth()/2;
+  const tip=document.getElementById('tip');
+  const g=svg.append('g');
+  d3.range(24).forEach(i=>{
+    g.append('rect').attr('x',x(i)).attr('y',y(h.o[i])).attr('width',bw-1).attr('height',y(0)-y(h.o[i])).attr('fill',COLORS.empty).attr('rx',2);
+    g.append('rect').attr('x',x(i)+bw).attr('y',y(h.i[i])).attr('width',bw-1).attr('height',y(0)-y(h.i[i])).attr('fill',COLORS.full).attr('rx',2);
+    g.append('rect').attr('x',x(i)).attr('y',m.t).attr('width',x.bandwidth()).attr('height',H-m.b-m.t).attr('fill','transparent')
+      .on('mousemove',ev=>{tip.style.opacity=1;tip.textContent=`${i}:00–${i+1}:00　借出 ${h.o[i].toFixed(1)}｜歸還 ${h.i[i].toFixed(1)}（平日平均）`;
+        const r=document.getElementById('chart').getBoundingClientRect();let lx=ev.clientX-r.left+10;if(lx>W-230)lx=W-230;tip.style.left=lx+'px';tip.style.top=(ev.clientY-r.top-30)+'px';})
+      .on('mouseleave',()=>tip.style.opacity=0);
+  });
+  const lg=svg.append('g').attr('transform',`translate(${m.l+6},${m.t})`);
+  [['借出',COLORS.empty],['歸還',COLORS.full]].forEach(([t,c],i)=>{lg.append('rect').attr('x',i*64).attr('y',0).attr('width',10).attr('height',10).attr('fill',c);lg.append('text').attr('x',i*64+14).attr('y',9).attr('font-size',12).attr('fill','#5f6764').text(t);});
+}
+// Campus aggregate net flow
+const NEAR_N=STATIONS.filter(s=>s.near&&HOURLY[s.name]).length;
+const CAMPUS_NET=d3.range(24).map(h=>STATIONS.filter(s=>s.near&&HOURLY[s.name]).reduce((a,s)=>a+HOURLY[s.name].i[h]-HOURLY[s.name].o[h],0));
+(function(){
+  const am=d3.sum([7,8,9],h=>CAMPUS_NET[h]), pm=d3.sum([16,17,18],h=>CAMPUS_NET[h]);
+  document.getElementById('campusNote').textContent=`500 公尺內 ${NEAR_N} 站合計：平日 7:00–10:00 平均淨流入約 ${Math.round(am)} 台車（越晚到越容易沒位可還）；16:00–19:00 平均淨流出約 ${Math.round(-pm)} 台（下課越晚越容易沒車可借）。`;
+})();
+function drawCampus(){
+  const svg=d3.select('#campusChart');svg.selectAll('*').remove();
+  const W=document.getElementById('campusChart').clientWidth,H=240,m={t:12,r:12,b:30,l:44};
+  const x=d3.scaleBand().domain(d3.range(24)).range([m.l,W-m.r]).padding(0.15);
+  const ext=d3.max(CAMPUS_NET,v=>Math.abs(v));
+  const y=d3.scaleLinear().domain([-ext,ext]).nice().range([H-m.b,m.t]);
+  svg.append('g').attr('transform',`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(W-m.l-m.r))).call(g=>g.select('.domain').remove()).call(g=>g.selectAll('line').attr('stroke','#eee')).call(g=>g.selectAll('text').attr('fill','#5f6764'));
+  svg.append('g').attr('transform',`translate(0,${H-m.b})`).call(d3.axisBottom(x).tickValues(d3.range(0,24,3)).tickFormat(d=>d+'時').tickSizeOuter(0)).call(g=>g.select('.domain').remove()).call(g=>g.selectAll('text').attr('fill','#5f6764'));
+  svg.append('line').attr('x1',m.l).attr('x2',W-m.r).attr('y1',y(0)).attr('y2',y(0)).attr('stroke','#999');
+  const tip=document.getElementById('tip2');
+  CAMPUS_NET.forEach((v,i)=>{
+    svg.append('rect').attr('x',x(i)).attr('width',x.bandwidth()).attr('y',v>=0?y(v):y(0)).attr('height',Math.abs(y(v)-y(0))).attr('rx',2).attr('fill',v>=0?COLORS.full:COLORS.empty)
+      .on('mousemove',ev=>{tip.style.opacity=1;tip.textContent=`${i}:00–${i+1}:00　淨${v>=0?'流入':'流出'} ${Math.abs(v).toFixed(0)} 台`;const r=document.getElementById('campusChart').getBoundingClientRect();let lx=ev.clientX-r.left+10;if(lx>W-170)lx=W-170;tip.style.left=lx+'px';tip.style.top=(ev.clientY-r.top-30)+'px';})
+      .on('mouseleave',()=>tip.style.opacity=0);
+  });
+}
+drawCampus();
+window.addEventListener('resize',()=>{const n=q.value;if(byName[n])drawChart(HOURLY[n]);drawCampus();});
+(function(){const qb=document.getElementById('quick');const lab=document.createElement('span');lab.className='note';lab.style.alignSelf='center';lab.textContent='離公衛學院最近：';qb.append(lab);
+STATIONS.filter(s=>HOURLY[s.name]).sort((a,b)=>a.dist-b.dist).slice(0,4).forEach(s=>{const b=document.createElement('button');b.textContent=`${s.name}（${s.dist}m）`;b.onclick=()=>select(s.name,true);qb.append(b);});})();
+select(META.defaultStation,false);
+</script>
+</body>
+</html>
