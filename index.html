@@ -180,7 +180,7 @@ const rated = STATIONS.filter(s=>s.car);
 let map, layer, markers={}, activeFilter='all';
 (function(){
   map=L.map('map',{scrollWheelZoom:false}).setView([SITE.lat,SITE.lng],15);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors © CARTO'}).addTo(map);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
   L.circle([SITE.lat,SITE.lng],{radius:1000,color:'#1f6f5c',weight:1,dashArray:'4 4',fill:false,interactive:false}).addTo(map);
   L.circle([SITE.lat,SITE.lng],{radius:500,color:'#1f6f5c',weight:1.2,fillColor:'#1f6f5c',fillOpacity:0.04,interactive:false}).addTo(map);
   L.marker([SITE.lat,SITE.lng],{icon:L.divIcon({className:'',html:'<div style="font-size:13px;font-weight:800;color:#fff;background:#1f6f5c;padding:2px 8px;border-radius:5px;white-space:nowrap;width:max-content;transform:translate(-50%,-160%);box-shadow:0 1px 3px rgba(0,0,0,.3)">★ 台大公衛學院</div>'})}).addTo(map);
